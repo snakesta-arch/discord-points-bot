@@ -1,0 +1,1 @@
+Upload to Railway or run locally with python bot.py
