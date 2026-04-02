@@ -25,7 +25,7 @@ POINT_TAGS = {
     1487884949787902063: {"label": "WZ Regular Big Map", "points": 3},
     1487885091710570546: {"label": "WZ Casual Resurg", "points": 1},
     1487885229245858003: {"label": "WZ Resurg Regular", "points": 2},
-    1487885330626384114: {"label": "WZ Ranked", "points": 3},
+    1487885330626384114: {"label": "WZ Ranked", "points": 4},
     1487885402491719721: {"label": "Black Ops Royale", "points": 3},
     1487885478475731046: {"label": "MP Game", "points": 1},
     1487885554673651844: {"label": "MP Ranked", "points": 2},
