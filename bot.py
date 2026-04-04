@@ -21,14 +21,14 @@ LEADERBOARD_POST_HOURS = os.getenv("LEADERBOARD_POST_HOURS", "9,21")
 MOD_ROLE_ID = int(os.getenv("MOD_ROLE_ID", "1344514802898309220"))
 
 POINT_TAGS = {
-    1487884581259579462: {"label": "WZ Casual Big Map", "points": 2},
-    1487884949787902063: {"label": "WZ Regular Big Map", "points": 3},
-    1487885091710570546: {"label": "WZ Casual Resurg", "points": 1},
-    1487885229245858003: {"label": "WZ Resurg Regular", "points": 2},
-    1487885330626384114: {"label": "WZ Ranked", "points": 3},
-    1487885402491719721: {"label": "Black Ops Royale", "points": 3},
+    1487884581259579462: {"label": "WZ Casual Big Map", "points": 5},
+    1487884949787902063: {"label": "WZ Regular Big Map", "points": 8},
+    1487885091710570546: {"label": "WZ Casual Resurg", "points": 4},
+    1487885229245858003: {"label": "WZ Resurg Regular", "points": 7},
+    1487885330626384114: {"label": "WZ Ranked", "points": 10},
+    1487885402491719721: {"label": "Black Ops Royale", "points": 8},
     1487885478475731046: {"label": "MP Game", "points": 1},
-    1487885554673651844: {"label": "MP Ranked", "points": 2},
+    1487885554673651844: {"label": "MP Ranked", "points": 8},
 }
 
 POST_HOURS = {
