@@ -573,8 +573,7 @@ async def build_leaderboard_embed(guild: discord.Guild, period_label: str, start
         total = int(row["total"])
         name = resolve_member_name(guild, user_id)
         lines.append(f"**{idx}.** {name} - **{total}**")
-    embed.description = "
-".join(lines)
+    embed.description = "\n".join(lines)
     return embed
 
 
