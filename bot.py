@@ -270,6 +270,27 @@ def record_manual_adjustment(
 
 
 
+
+def ensure_bonus_events_table() -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bonus_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                multiplier REAL NOT NULL,
+                start_at TEXT NOT NULL,
+                end_at TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+
 def create_bonus_event(guild_id: int, name: str, multiplier: float, start_at: str, end_at: str) -> None:
     now = utc_now_iso()
     with get_db() as conn:
@@ -289,6 +310,7 @@ def create_bonus_event(guild_id: int, name: str, multiplier: float, start_at: st
 
 
 def get_active_bonus_event(guild_id: int):
+    ensure_bonus_events_table()
     now = utc_now_iso()
     with get_db() as conn:
         return conn.execute(
@@ -307,6 +329,7 @@ def get_active_bonus_event(guild_id: int):
 
 
 def get_latest_bonus_event(guild_id: int):
+    ensure_bonus_events_table()
     with get_db() as conn:
         return conn.execute(
             """
@@ -719,6 +742,7 @@ def build_events_csv(guild: discord.Guild, period_label: str, start_at: Optional
 
 @bot.event
 async def on_ready():
+    ensure_bonus_events_table()
     init_db()
     try:
         if GUILD_ID:
