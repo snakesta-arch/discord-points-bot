@@ -13,6 +13,7 @@
 import csv
 import io
 import os
+import random
 import sqlite3
 import time
 from collections import defaultdict
@@ -35,6 +36,38 @@ MOD_ROLE_ID = int(os.getenv("MOD_ROLE_ID", "1344514802898309220"))
 BOT_ROLE_ID = int(os.getenv("BOT_ROLE_ID", "708012967308034138"))
 ACK_COOLDOWN_SECONDS = int(os.getenv("ACK_COOLDOWN_SECONDS", "10"))
 ACK_USE_REACTION_FALLBACK = os.getenv("ACK_USE_REACTION_FALLBACK", "true").lower() == "true"
+
+PRANK_ENABLED = os.getenv("PRANK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+PRANK_USER_ID = int(os.getenv("PRANK_USER_ID", "0"))
+PRANK_CHANNEL_ID = int(os.getenv("PRANK_CHANNEL_ID", "0"))
+PRANK_USER_NICKNAME = os.getenv("PRANK_USER_NICKNAME", "Goat Milk")
+PRANK_COOLDOWN_SECONDS = int(os.getenv("PRANK_COOLDOWN_SECONDS", "300"))
+
+PRANK_QUOTES = [
+    "The Bot Lobby Special: Must’ve been a bot lobby if you actually got the W, {name}.",
+    "The VPN Accusation: Which country did you VPN to this time, {name}?",
+    "The Dirty Rat: You spent so long prone in a bush I’m surprised the gas didn’t get you first, {name}.",
+    "The Heavy Carry: I hope you tipped your teammates for carrying that much dead weight, {name}.",
+    "The Skill Issue: Your K/D is so low even the Mariana Trench rejected it, {name}.",
+    "The Participation Trophy: Congrats {name}, truly a Rando Calrissian moment.",
+    "The Training Wheels: That meta loadout win doesn’t count, {name}.",
+    "The Ghost Player: Didn’t see you once… did you just hide all game, {name}?",
+    "The Panic Win: Even a broken clock gets lucky, {name}.",
+    "The Loot Goblin: You looted more than you fought, didn’t you {name}?",
+    "The Gulag Tourist: {name} visits the Gulag more often than the buy station.",
+    "The Audio Blindness: Footsteps? Nah, {name} plays on mute.",
+    "The Storm Hugger: {name} loves the gas more than actual gunfights.",
+    "The Third-Party King: {name} only shoots people already one bullet from death.",
+    "The Plate Hoarder: {name} had 12 plates and still lost a 1v1.",
+    "The Panic Reload: {name} reloads after every single bullet fired.",
+    "The UAV Addict: {name} doesn’t move without a UAV like it’s life support.",
+    "The Late Game Camper: {name} treats the final circle like it’s a rental property.",
+    "The Missed Shots: {name} couldn’t hit water falling out of a boat.",
+    "The Clutch Myth: {name} calls it clutch… the squad calls it luck.",
+]
+
+_prank_last_sent: dict[int, float] = {}
+
 
 BOARD_LABELS = {
     "warzone": "Warzone Leaderboard",
@@ -617,6 +650,39 @@ async def send_score_ack(message: discord.Message, category_tag: str, points: in
             print(f"Ack reaction fallback failed for message {message.id}: {exc}")
 
 
+
+async def maybe_send_prank_message(message: discord.Message) -> None:
+    if not PRANK_ENABLED:
+        return
+    if not message.guild:
+        return
+    if message.author.bot:
+        return
+    if not PRANK_USER_ID or not PRANK_CHANNEL_ID:
+        return
+    if message.channel.id != PRANK_CHANNEL_ID:
+        return
+
+    target_triggered = message.author.id == PRANK_USER_ID or any(
+        user.id == PRANK_USER_ID for user in message.mentions
+    )
+    if not target_triggered:
+        return
+
+    now = time.time()
+    last_sent = _prank_last_sent.get(message.guild.id, 0)
+    if now - last_sent < PRANK_COOLDOWN_SECONDS:
+        return
+
+    _prank_last_sent[message.guild.id] = now
+    quote = random.choice(PRANK_QUOTES).format(name=PRANK_USER_NICKNAME)
+
+    try:
+        await message.channel.send(quote)
+    except discord.HTTPException as exc:
+        print(f"Failed to send prank message: {exc}")
+
+
 async def process_message_for_points(message: discord.Message) -> bool:
     if not message.guild:
         return False
@@ -764,6 +830,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
+    await maybe_send_prank_message(message)
     processed = await process_message_for_points(message)
     if processed:
         try:
