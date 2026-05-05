@@ -32,6 +32,7 @@ BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "America/New_York")
 DB_PATH = os.getenv("DB_PATH", "/data/points_bot.db")
 LEADERBOARD_POST_HOURS = os.getenv("LEADERBOARD_POST_HOURS", "9,21")
 MOD_ROLE_ID = int(os.getenv("MOD_ROLE_ID", "1344514802898309220"))
+BOT_ROLE_ID = int(os.getenv("BOT_ROLE_ID", "708012967308034138"))
 ACK_COOLDOWN_SECONDS = int(os.getenv("ACK_COOLDOWN_SECONDS", "10"))
 ACK_USE_REACTION_FALLBACK = os.getenv("ACK_USE_REACTION_FALLBACK", "true").lower() == "true"
 
@@ -266,6 +267,81 @@ def record_manual_adjustment(
             ),
         )
         conn.commit()
+
+
+
+def create_bonus_event(guild_id: int, name: str, multiplier: float, start_at: str, end_at: str) -> None:
+    now = utc_now_iso()
+    with get_db() as conn:
+        # One active bonus event at a time per guild.
+        conn.execute(
+            "UPDATE bonus_events SET is_active = 0, updated_at = ? WHERE guild_id = ? AND is_active = 1",
+            (now, str(guild_id)),
+        )
+        conn.execute(
+            """
+            INSERT INTO bonus_events (guild_id, name, multiplier, start_at, end_at, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            """,
+            (str(guild_id), name, float(multiplier), start_at, end_at, now, now),
+        )
+        conn.commit()
+
+
+def get_active_bonus_event(guild_id: int):
+    now = utc_now_iso()
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM bonus_events
+            WHERE guild_id = ?
+              AND is_active = 1
+              AND start_at <= ?
+              AND end_at >= ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(guild_id), now, now),
+        ).fetchone()
+
+
+def get_latest_bonus_event(guild_id: int):
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM bonus_events
+            WHERE guild_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(guild_id),),
+        ).fetchone()
+
+
+def end_active_bonus_event(guild_id: int) -> bool:
+    now = utc_now_iso()
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM bonus_events WHERE guild_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1",
+            (str(guild_id),),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "UPDATE bonus_events SET is_active = 0, end_at = ?, updated_at = ? WHERE id = ?",
+            (now, now, row["id"]),
+        )
+        conn.commit()
+        return True
+
+
+def bonus_multiplier_for_guild(guild_id: int) -> tuple[float, Optional[str]]:
+    bonus = get_active_bonus_event(guild_id)
+    if not bonus:
+        return 1.0, None
+    return float(bonus["multiplier"]), str(bonus["name"])
 
 
 def create_or_update_season(guild_id: int, name: str, start_at: str, end_at: Optional[str]) -> None:
@@ -519,19 +595,30 @@ async def send_score_ack(message: discord.Message, category_tag: str, points: in
 
 
 async def process_message_for_points(message: discord.Message) -> bool:
-    if not message.guild or message.author.bot or message.channel.id != SOURCE_CHANNEL_ID:
+    if not message.guild:
         return False
-    if is_processed(message.id) or not has_image_attachment(message):
+    if message.author.bot:
         return False
+    if message.channel.id != SOURCE_CHANNEL_ID:
+        return False
+    if is_processed(message.id):
+        return False
+    if not has_image_attachment(message):
+        return False
+
     category = extract_matching_category(message)
     if not category:
         return False
+
     recipients = get_awarded_members(message)
     if not recipients:
         return False
 
     month_key = current_month_key()
-    category_tag, points, _role_id, board_key = category
+    category_tag, base_points, _role_id, board_key = category
+    multiplier, _bonus_name = bonus_multiplier_for_guild(message.guild.id)
+    points = int(base_points * multiplier)
+
     for member in recipients:
         record_score_event(
             guild_id=message.guild.id,
@@ -544,6 +631,7 @@ async def process_message_for_points(message: discord.Message) -> bool:
             month_key=month_key,
             leaderboard_key=board_key,
         )
+
     mark_processed(message.id, message.guild.id, message.channel.id)
     return True
 
@@ -551,7 +639,8 @@ async def process_message_for_points(message: discord.Message) -> bool:
 def has_mod_access(member: discord.Member) -> bool:
     if member.guild_permissions.administrator:
         return True
-    if MOD_ROLE_ID and any(role.id == MOD_ROLE_ID for role in member.roles):
+    allowed_role_ids = {role_id for role_id in (MOD_ROLE_ID, BOT_ROLE_ID) if role_id}
+    if allowed_role_ids and any(role.id in allowed_role_ids for role in member.roles):
         return True
     return False
 
@@ -654,7 +743,9 @@ async def on_message(message: discord.Message):
     processed = await process_message_for_points(message)
     if processed:
         try:
-            category_tag, points, role_id, board_key = extract_matching_category(message)  # type: ignore[misc]
+            category_tag, base_points, role_id, board_key = extract_matching_category(message)  # type: ignore[misc]
+            multiplier, _bonus_name = bonus_multiplier_for_guild(message.guild.id)
+            points = int(base_points * multiplier)
             recipients = get_awarded_members(message)
             await send_score_ack(message, category_tag, points, role_id, recipients, board_key)
         except Exception as exc:
@@ -878,22 +969,121 @@ async def seasonlist(interaction: discord.Interaction):
     await interaction.response.send_message(embed=discord.Embed(title="Configured Seasons", description="\n".join(lines)), ephemeral=True)
 
 
+
+@bot.tree.command(name="bonusevent_start", description="Start a bonus points event.")
+@app_commands.describe(
+    name="Bonus event name, e.g. Double Points Weekend",
+    multiplier="Points multiplier, e.g. 2 for double points",
+    start_date="Start date in YYYY-MM-DD format",
+    end_date="End date in YYYY-MM-DD format",
+)
+async def bonusevent_start(
+    interaction: discord.Interaction,
+    name: str,
+    multiplier: float,
+    start_date: str,
+    end_date: str,
+):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message("This command only works in a server.", ephemeral=True)
+        return
+    if not has_mod_access(interaction.user):
+        await interaction.response.send_message(
+            "You need administrator permission or the configured mod role to use this command.",
+            ephemeral=True,
+        )
+        return
+    if multiplier <= 0:
+        await interaction.response.send_message("Multiplier must be greater than 0.", ephemeral=True)
+        return
+
+    try:
+        start_at = normalize_date_input(start_date, end_of_day=False)
+        end_at = normalize_date_input(end_date, end_of_day=True)
+        if start_at > end_at:
+            raise ValueError("start_date must be on or before end_date.")
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+
+    create_bonus_event(interaction.guild.id, name, multiplier, start_at, end_at)
+    await interaction.response.send_message(
+        f"Started bonus event **{name}**: **{multiplier}x** from **{start_date}** through **{end_date}**.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="bonusevent_end", description="End the active bonus points event.")
+async def bonusevent_end(interaction: discord.Interaction):
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message("This command only works in a server.", ephemeral=True)
+        return
+    if not has_mod_access(interaction.user):
+        await interaction.response.send_message(
+            "You need administrator permission or the configured mod role to use this command.",
+            ephemeral=True,
+        )
+        return
+
+    if not end_active_bonus_event(interaction.guild.id):
+        await interaction.response.send_message("There is no active bonus event to end.", ephemeral=True)
+        return
+
+    await interaction.response.send_message("Ended the active bonus event.", ephemeral=True)
+
+
+@bot.tree.command(name="bonusevent_status", description="Show the current bonus points event status.")
+async def bonusevent_status(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("This command only works in a server.", ephemeral=True)
+        return
+
+    active = get_active_bonus_event(interaction.guild.id)
+    if active:
+        start_str = utc_iso_to_display(str(active["start_at"]))
+        end_str = utc_iso_to_display(str(active["end_at"]))
+        await interaction.response.send_message(
+            f"Active bonus event: **{active['name']}** — **{active['multiplier']}x** from **{start_str}** through **{end_str}**.",
+            ephemeral=True,
+        )
+        return
+
+    latest = get_latest_bonus_event(interaction.guild.id)
+    if latest and int(latest["is_active"]) == 1:
+        start_str = utc_iso_to_display(str(latest["start_at"]))
+        end_str = utc_iso_to_display(str(latest["end_at"]))
+        await interaction.response.send_message(
+            f"A bonus event is configured but not currently active: **{latest['name']}** — **{latest['multiplier']}x** from **{start_str}** through **{end_str}**.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message("No active bonus event.", ephemeral=True)
+
+
 @tasks.loop(minutes=1)
 async def leaderboard_task():
     now = datetime.now(ZoneInfo(BOT_TIMEZONE))
-    if now.minute != 0 or now.hour not in POST_HOURS:
+    schedule_map = {}
+    for hour in POST_HOURS:
+        schedule_map[(hour, 0)] = "warzone"
+        schedule_map[(hour, 5)] = "multiplayer"
+        schedule_map[(hour, 10)] = "mod_ranked"
+
+    board_key = schedule_map.get((now.hour, now.minute))
+    if board_key is None:
         return
+
     for guild in bot.guilds:
         channel = guild.get_channel(LEADERBOARD_CHANNEL_ID)
         if channel is None:
             continue
         try:
             period_label, start_at, end_at = resolve_period(guild.id)
-            for board_key in BOARD_LABELS.keys():
-                embed = await build_leaderboard_embed(guild, period_label, start_at, end_at, board_key)
-                await channel.send(embed=embed)
+            embed = await build_leaderboard_embed(guild, period_label, start_at, end_at, board_key)
+            await channel.send(embed=embed)
         except Exception as exc:
-            print(f"Failed to post leaderboards for guild {guild.id}: {exc}")
+            print(f"Failed to post leaderboard {board_key} for guild {guild.id}: {exc}")
 
 
 @leaderboard_task.before_loop
