@@ -38,649 +38,73 @@ ACK_COOLDOWN_SECONDS = int(os.getenv("ACK_COOLDOWN_SECONDS", "10"))
 ACK_USE_REACTION_FALLBACK = os.getenv("ACK_USE_REACTION_FALLBACK", "true").lower() == "true"
 
 PRANK_ENABLED = os.getenv("PRANK_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
-PRANK_USER_ID = int(os.getenv("PRANK_USER_ID", "0"))
 PRANK_CHANNEL_ID = int(os.getenv("PRANK_CHANNEL_ID", "0"))
-PRANK_USER_NICKNAME = os.getenv("PRANK_USER_NICKNAME", "Goat Milk")
-PRANK_COOLDOWN_SECONDS = int(os.getenv("PRANK_COOLDOWN_SECONDS", "300"))
+PRANK_EVERY_N_SCORE_POSTS = int(os.getenv("PRANK_EVERY_N_SCORE_POSTS", "3"))
 
 PRANK_QUOTES = [
-    "The Bot Lobby Special: Must’ve been a bot lobby if you actually got the W, {name}.",
-    "The VPN Accusation: Which country did you VPN to this time, {name}?",
-    "The Dirty Rat: You spent so long prone in a bush I’m surprised the gas didn’t get you first, {name}.",
-    "The Heavy Carry: I hope you tipped your teammates for carrying that much dead weight, {name}.",
-    "The Skill Issue: Your K/D is so low even the Mariana Trench rejected it, {name}.",
-    "The Participation Trophy: Congrats {name}, truly a Rando Calrissian moment.",
-    "The Training Wheels: That meta loadout win doesn’t count, {name}.",
-    "The Ghost Player: Didn’t see you once… did you just hide all game, {name}?",
-    "The Panic Win: Even a broken clock gets lucky, {name}.",
-    "The Loot Goblin: You looted more than you fought, didn’t you {name}?",
-    "The Gulag Tourist: {name} visits the Gulag more often than the buy station.",
-    "The Audio Blindness: Footsteps? Nah, {name} plays on mute.",
-    "The Storm Hugger: {name} loves the gas more than actual gunfights.",
-    "The Third-Party King: {name} only shoots people already one bullet from death.",
-    "The Plate Hoarder: {name} had 12 plates and still lost a 1v1.",
-    "The Panic Reload: {name} reloads after every single bullet fired.",
-    "The UAV Addict: {name} doesn’t move without a UAV like it’s life support.",
-    "The Late Game Camper: {name} treats the final circle like it’s a rental property.",
-    "The Missed Shots: {name} couldn’t hit water falling out of a boat.",
-    "The Clutch Myth: {name} calls it clutch… the squad calls it luck.",
+    "Milk of Duty really scraping the bottom of the milk carton with your gameplay, {name}.",
+    "That lobby must’ve been sponsored by Fisher-Price if you survived that, {name}.",
+    "You move through Warzone like a divorced dad looking for parking, {name}.",
+    "Milk of Duty HR wants to know how you still have a roster spot, {name}.",
+    "That aim assist worked harder than you did, {name}.",
+    "You spent the whole match looting just to donate gear to the first real player you saw, {name}.",
+    "You play like your controller batteries are dying in real time, {name}.",
+    "I’ve seen stronger movement from NPC civilians, {name}.",
+    "Milk of Duty might need to lactose-free your contract after that performance, {name}.",
+    "Your gun skill looks AI generated, {name}.",
+    "You rotate into zone like it personally offended you, {name}.",
+    "The only thing getting carried harder than your backpack is your K/D, {name}.",
+    "I’ve seen supermarket cashiers with better reaction time, {name}.",
+    "You camp so hard the game should charge you rent, {name}.",
+    "Milk of Duty doctors officially diagnosed that gameplay as terminally fraudulent, {name}.",
+    "You panic reload so often I’m surprised your reload button still works, {name}.",
+    "The Gulag staff know you by first name at this point, {name}.",
+    "That win was less skill and more a statistical accident, {name}.",
+    "You third-party fights like a raccoon digging through leftovers, {name}.",
+    "Your teammates deserve combat pay for babysitting you, {name}.",
+    "You loot every building like you’re filing taxes in there, {name}.",
+    "Milk of Duty command confirms your backpack contributed more than your aim, {name}.",
+    "Watching your gameplay lowers squad morale, {name}.",
+    "You move around the map like your operator owes child support, {name}.",
+    "Your callouts sound like someone reading IKEA instructions under pressure, {name}.",
+    "That loadout is doing all the work while you sightsee, {name}.",
+    "Even the bots spectating were embarrassed for you, {name}.",
+    "You spent the whole game hiding just to lose the final gunfight anyway, {name}.",
+    "Milk of Duty is considering replacing you with a Roomba after that performance, {name}.",
+    "Honestly {name}, that gameplay should qualify as a war crime against aim.",
 ]
 
-_prank_last_sent: dict[int, float] = {}
+_prank_score_post_counter: dict[int, int] = {}
 
 
-BOARD_LABELS = {
-    "warzone": "Warzone Leaderboard",
-    "multiplayer": "Multiplayer Leaderboard",
-    "mod_ranked": "MoD Ranked Leaderboard",
-}
 
-POINT_TAGS = {
-    1487884581259579462: {"label": "WZ Casual Big Map", "points": 1, "board": "warzone"},
-    1487884949787902063: {"label": "WZ Regular Big Map", "points": 2, "board": "warzone"},
-    1487885091710570546: {"label": "WZ Casual Resurg", "points": 1, "board": "warzone"},
-    1487885229245858003: {"label": "WZ Resurg Regular", "points": 2, "board": "warzone"},
-    1487885330626384114: {"label": "WZ Ranked", "points": 2, "board": "mod_ranked"},
-    1487885402491719721: {"label": "Black Ops Royale", "points": 2, "board": "warzone"},
-    1487885478475731046: {"label": "MP Game", "points": 1, "board": "multiplayer"},
-    1487885554673651844: {"label": "MP Ranked", "points": 1, "board": "mod_ranked"},
-}
-
-LEGACY_CATEGORY_TO_BOARD = {
-    "WZBigMapCasual": "warzone",
-    "WZBigMapRegular": "warzone",
-    "WZResurgCasual": "warzone",
-    "WZResurgRegular": "warzone",
-    "WZRanked": "mod_ranked",
-    "BlackOpsRoyale": "warzone",
-    "MPGame": "multiplayer",
-    "MPRanked": "mod_ranked",
-    "WZ Casual Big Map": "warzone",
-    "WZ Regular Big Map": "warzone",
-    "WZ Casual Resurg": "warzone",
-    "WZ Resurg Regular": "warzone",
-    "WZ Ranked": "mod_ranked",
-    "Black Ops Royale": "warzone",
-    "MP Game": "multiplayer",
-    "MP Ranked": "mod_ranked",
-}
-
-POST_HOURS = {
-    int(part.strip())
-    for part in LEADERBOARD_POST_HOURS.split(",")
-    if part.strip().isdigit() and 0 <= int(part.strip()) <= 23
-}
-if not POST_HOURS:
-    POST_HOURS = {9, 21}
-
-LAST_ACK_BY_CHANNEL: dict[int, float] = {}
-
-
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def ensure_db_dir() -> None:
-    db_dir = os.path.dirname(DB_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-
-
-def init_db() -> None:
-    ensure_db_dir()
-    with get_db() as conn:
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS score_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT NOT NULL,
-                month_key TEXT NOT NULL,
-                message_id TEXT NOT NULL,
-                source_channel_id TEXT NOT NULL,
-                category_tag TEXT NOT NULL,
-                points INTEGER NOT NULL,
-                poster_user_id TEXT NOT NULL,
-                awarded_user_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                leaderboard_key TEXT
-            )
-            '''
-        )
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS processed_messages (
-                message_id TEXT PRIMARY KEY,
-                guild_id TEXT NOT NULL,
-                source_channel_id TEXT NOT NULL,
-                processed_at TEXT NOT NULL
-            )
-            '''
-        )
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS seasons (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                start_at TEXT NOT NULL,
-                end_at TEXT,
-                is_active INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                UNIQUE(guild_id, name)
-            )
-            '''
-        )
-
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(score_events)").fetchall()}
-        if "leaderboard_key" not in columns:
-            conn.execute("ALTER TABLE score_events ADD COLUMN leaderboard_key TEXT")
-
-        for category_tag, leaderboard_key in LEGACY_CATEGORY_TO_BOARD.items():
-            conn.execute(
-                '''
-                UPDATE score_events
-                SET leaderboard_key = ?
-                WHERE (leaderboard_key IS NULL OR leaderboard_key = '')
-                  AND category_tag = ?
-                ''',
-                (leaderboard_key, category_tag),
-            )
-
-        conn.commit()
-
-
-def current_month_key() -> str:
-    return datetime.now(ZoneInfo(BOT_TIMEZONE)).strftime("%Y-%m")
-
-
-def normalize_month_key(month: Optional[str]) -> str:
-    if not month:
-        return current_month_key()
-    try:
-        parsed = datetime.strptime(month, "%Y-%m")
-        return parsed.strftime("%Y-%m")
-    except ValueError as exc:
-        raise ValueError("Month must be in YYYY-MM format, e.g. 2026-03") from exc
-
-
-def normalize_date_input(value: str, *, end_of_day: bool = False) -> str:
-    try:
-        date_part = datetime.strptime(value, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValueError("Dates must be in YYYY-MM-DD format.") from exc
-    tz = ZoneInfo(BOT_TIMEZONE)
-    if end_of_day:
-        dt = date_part.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=tz)
-    else:
-        dt = date_part.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=tz)
-    return dt.astimezone(timezone.utc).isoformat()
-
-
-def utc_iso_to_display(iso_value: str) -> str:
-    dt = datetime.fromisoformat(iso_value)
-    return dt.astimezone(ZoneInfo(BOT_TIMEZONE)).strftime("%Y-%m-%d")
-
-
-def is_processed(message_id: int) -> bool:
-    with get_db() as conn:
-        row = conn.execute("SELECT 1 FROM processed_messages WHERE message_id = ?", (str(message_id),)).fetchone()
-        return row is not None
-
-
-def mark_processed(message_id: int, guild_id: int, source_channel_id: int) -> None:
-    with get_db() as conn:
-        conn.execute(
-            '''
-            INSERT OR IGNORE INTO processed_messages (message_id, guild_id, source_channel_id, processed_at)
-            VALUES (?, ?, ?, ?)
-            ''',
-            (str(message_id), str(guild_id), str(source_channel_id), utc_now_iso()),
-        )
-        conn.commit()
-
-
-def record_score_event(
-    guild_id: int,
-    message_id: int,
-    source_channel_id: int,
-    category_tag: str,
-    points: int,
-    poster_user_id: int,
-    awarded_user_id: int,
-    month_key: str,
-    leaderboard_key: str,
-) -> None:
-    with get_db() as conn:
-        conn.execute(
-            '''
-            INSERT OR IGNORE INTO score_events (
-                guild_id, month_key, message_id, source_channel_id, category_tag,
-                points, poster_user_id, awarded_user_id, created_at, leaderboard_key
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''',
-            (
-                str(guild_id), month_key, str(message_id), str(source_channel_id),
-                category_tag, points, str(poster_user_id), str(awarded_user_id),
-                utc_now_iso(), leaderboard_key,
-            ),
-        )
-        conn.commit()
-
-
-def record_manual_adjustment(
-    guild_id: int,
-    awarded_user_id: int,
-    moderator_user_id: int,
-    points: int,
-    reason: str,
-    month_key: Optional[str] = None,
-    leaderboard_key: Optional[str] = None,
-) -> None:
-    effective_month = normalize_month_key(month_key)
-    synthetic_message_id = f"manual-{moderator_user_id}-{awarded_user_id}-{datetime.now(timezone.utc).timestamp()}"
-    with get_db() as conn:
-        conn.execute(
-            '''
-            INSERT INTO score_events (
-                guild_id, month_key, message_id, source_channel_id, category_tag,
-                points, poster_user_id, awarded_user_id, created_at, leaderboard_key
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''',
-            (
-                str(guild_id), effective_month, synthetic_message_id, "manual_adjustment",
-                reason, int(points), str(moderator_user_id), str(awarded_user_id),
-                utc_now_iso(), leaderboard_key,
-            ),
-        )
-        conn.commit()
-
-
-
-
-def ensure_bonus_events_table() -> None:
-    with get_db() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS bonus_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                multiplier REAL NOT NULL,
-                start_at TEXT NOT NULL,
-                end_at TEXT NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.commit()
-
-
-def create_bonus_event(guild_id: int, name: str, multiplier: float, start_at: str, end_at: str) -> None:
-    now = utc_now_iso()
-    with get_db() as conn:
-        # One active bonus event at a time per guild.
-        conn.execute(
-            "UPDATE bonus_events SET is_active = 0, updated_at = ? WHERE guild_id = ? AND is_active = 1",
-            (now, str(guild_id)),
-        )
-        conn.execute(
-            """
-            INSERT INTO bonus_events (guild_id, name, multiplier, start_at, end_at, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-            """,
-            (str(guild_id), name, float(multiplier), start_at, end_at, now, now),
-        )
-        conn.commit()
-
-
-def get_active_bonus_event(guild_id: int):
-    ensure_bonus_events_table()
-    now = utc_now_iso()
-    with get_db() as conn:
-        return conn.execute(
-            """
-            SELECT *
-            FROM bonus_events
-            WHERE guild_id = ?
-              AND is_active = 1
-              AND start_at <= ?
-              AND end_at >= ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (str(guild_id), now, now),
-        ).fetchone()
-
-
-def get_latest_bonus_event(guild_id: int):
-    ensure_bonus_events_table()
-    with get_db() as conn:
-        return conn.execute(
-            """
-            SELECT *
-            FROM bonus_events
-            WHERE guild_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (str(guild_id),),
-        ).fetchone()
-
-
-def end_active_bonus_event(guild_id: int) -> bool:
-    now = utc_now_iso()
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT id FROM bonus_events WHERE guild_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1",
-            (str(guild_id),),
-        ).fetchone()
-        if not row:
-            return False
-        conn.execute(
-            "UPDATE bonus_events SET is_active = 0, end_at = ?, updated_at = ? WHERE id = ?",
-            (now, now, row["id"]),
-        )
-        conn.commit()
-        return True
-
-
-def bonus_multiplier_for_guild(guild_id: int) -> tuple[float, Optional[str]]:
-    bonus = get_active_bonus_event(guild_id)
-    if not bonus:
-        return 1.0, None
-    return float(bonus["multiplier"]), str(bonus["name"])
-
-
-def create_or_update_season(guild_id: int, name: str, start_at: str, end_at: Optional[str]) -> None:
-    now = utc_now_iso()
-    with get_db() as conn:
-        existing = conn.execute(
-            "SELECT id FROM seasons WHERE guild_id = ? AND name = ?",
-            (str(guild_id), name),
-        ).fetchone()
-        if existing:
-            conn.execute(
-                "UPDATE seasons SET start_at = ?, end_at = ?, updated_at = ? WHERE guild_id = ? AND name = ?",
-                (start_at, end_at, now, str(guild_id), name),
-            )
-        else:
-            conn.execute(
-                '''
-                INSERT INTO seasons (guild_id, name, start_at, end_at, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, ?, ?)
-                ''',
-                (str(guild_id), name, start_at, end_at, now, now),
-            )
-        conn.commit()
-
-
-def set_active_season(guild_id: int, name: str) -> bool:
-    now = utc_now_iso()
-    with get_db() as conn:
-        existing = conn.execute(
-            "SELECT id FROM seasons WHERE guild_id = ? AND name = ?",
-            (str(guild_id), name),
-        ).fetchone()
-        if not existing:
-            return False
-        conn.execute("UPDATE seasons SET is_active = 0, updated_at = ? WHERE guild_id = ?", (now, str(guild_id)))
-        conn.execute(
-            "UPDATE seasons SET is_active = 1, updated_at = ? WHERE guild_id = ? AND name = ?",
-            (now, str(guild_id), name),
-        )
-        conn.commit()
-        return True
-
-
-def close_season(guild_id: int, name: str, end_at: Optional[str] = None) -> bool:
-    now = utc_now_iso()
-    with get_db() as conn:
-        existing = conn.execute(
-            "SELECT id FROM seasons WHERE guild_id = ? AND name = ?",
-            (str(guild_id), name),
-        ).fetchone()
-        if not existing:
-            return False
-        effective_end = end_at or now
-        conn.execute(
-            "UPDATE seasons SET end_at = ?, is_active = 0, updated_at = ? WHERE guild_id = ? AND name = ?",
-            (effective_end, now, str(guild_id), name),
-        )
-        conn.commit()
-        return True
-
-
-def get_active_season(guild_id: int):
-    with get_db() as conn:
-        return conn.execute(
-            "SELECT * FROM seasons WHERE guild_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1",
-            (str(guild_id),),
-        ).fetchone()
-
-
-def get_season_by_name(guild_id: int, name: str):
-    with get_db() as conn:
-        return conn.execute("SELECT * FROM seasons WHERE guild_id = ? AND name = ?", (str(guild_id), name)).fetchone()
-
-
-def list_seasons(guild_id: int):
-    with get_db() as conn:
-        return conn.execute(
-            "SELECT * FROM seasons WHERE guild_id = ? ORDER BY start_at DESC, id DESC",
-            (str(guild_id),),
-        ).fetchall()
-
-
-def resolve_period(
-    guild_id: int,
-    *,
-    season_name: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-) -> tuple[str, Optional[str], Optional[str]]:
-    if season_name:
-        season = get_season_by_name(guild_id, season_name)
-        if not season:
-            raise ValueError(f"Season '{season_name}' was not found.")
-        return f"Season: {season['name']}", str(season["start_at"]), str(season["end_at"]) if season["end_at"] else None
-
-    if start_date or end_date:
-        if not start_date or not end_date:
-            raise ValueError("You must provide both start_date and end_date together.")
-        start_at = normalize_date_input(start_date, end_of_day=False)
-        end_at = normalize_date_input(end_date, end_of_day=True)
-        if start_at > end_at:
-            raise ValueError("start_date must be on or before end_date.")
-        return f"Range: {start_date} to {end_date}", start_at, end_at
-
-    active = get_active_season(guild_id)
-    if active:
-        return f"Season: {active['name']}", str(active["start_at"]), str(active["end_at"]) if active["end_at"] else None
-
-    month_key = current_month_key()
-    start_at = normalize_date_input(f"{month_key}-01", end_of_day=False)
-    year, month = month_key.split("-")
-    year_i, month_i = int(year), int(month)
-    if month_i == 12:
-        next_month = datetime(year_i + 1, 1, 1)
-    else:
-        next_month = datetime(year_i, month_i + 1, 1)
-    end_at = normalize_date_input(next_month.strftime("%Y-%m-%d"), end_of_day=False)
-    return f"Month: {month_key}", start_at, end_at
-
-
-def query_total_points(guild_id: int, user_id: int, start_at: Optional[str], end_at: Optional[str], leaderboard_key: str) -> int:
-    sql = '''
-        SELECT COALESCE(SUM(points), 0) AS total
-        FROM score_events
-        WHERE guild_id = ? AND awarded_user_id = ? AND leaderboard_key = ?
-    '''
-    params = [str(guild_id), str(user_id), leaderboard_key]
-    if start_at:
-        sql += " AND created_at >= ?"
-        params.append(start_at)
-    if end_at:
-        sql += " AND created_at <= ?"
-        params.append(end_at)
-    with get_db() as conn:
-        row = conn.execute(sql, params).fetchone()
-        return int(row["total"] if row else 0)
-
-
-def query_top_users(guild_id: int, start_at: Optional[str], end_at: Optional[str], leaderboard_key: str, limit: int = 10):
-    sql = '''
-        SELECT awarded_user_id, SUM(points) AS total
-        FROM score_events
-        WHERE guild_id = ? AND leaderboard_key = ?
-    '''
-    params = [str(guild_id), leaderboard_key]
-    if start_at:
-        sql += " AND created_at >= ?"
-        params.append(start_at)
-    if end_at:
-        sql += " AND created_at <= ?"
-        params.append(end_at)
-    sql += " GROUP BY awarded_user_id ORDER BY total DESC, awarded_user_id ASC LIMIT ?"
-    params.append(str(limit))
-    with get_db() as conn:
-        return conn.execute(sql, params).fetchall()
-
-
-def query_breakdown_rows(guild_id: int, start_at: Optional[str], end_at: Optional[str], leaderboard_key: str):
-    sql = '''
-        SELECT awarded_user_id, category_tag, SUM(points) AS total
-        FROM score_events
-        WHERE guild_id = ? AND leaderboard_key = ?
-    '''
-    params = [str(guild_id), leaderboard_key]
-    if start_at:
-        sql += " AND created_at >= ?"
-        params.append(start_at)
-    if end_at:
-        sql += " AND created_at <= ?"
-        params.append(end_at)
-    sql += " GROUP BY awarded_user_id, category_tag ORDER BY awarded_user_id ASC, category_tag ASC"
-    with get_db() as conn:
-        return conn.execute(sql, params).fetchall()
-
-
-def query_event_rows(guild_id: int, start_at: Optional[str], end_at: Optional[str], leaderboard_key: str):
-    sql = '''
-        SELECT created_at, message_id, source_channel_id, poster_user_id, awarded_user_id, category_tag, points, leaderboard_key
-        FROM score_events
-        WHERE guild_id = ? AND leaderboard_key = ?
-    '''
-    params = [str(guild_id), leaderboard_key]
-    if start_at:
-        sql += " AND created_at >= ?"
-        params.append(start_at)
-    if end_at:
-        sql += " AND created_at <= ?"
-        params.append(end_at)
-    sql += " ORDER BY created_at ASC, id ASC"
-    with get_db() as conn:
-        return conn.execute(sql, params).fetchall()
-
-
-intents = discord.Intents.default()
-intents.guilds = True
-intents.messages = True
-intents.message_content = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-
-def has_image_attachment(message: discord.Message) -> bool:
-    for attachment in message.attachments:
-        if attachment.content_type and attachment.content_type.startswith("image/"):
-            return True
-        if attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-            return True
-    return False
-
-
-def extract_matching_category(message: discord.Message) -> Optional[tuple[str, int, int, str]]:
-    for role in message.role_mentions:
-        config = POINT_TAGS.get(role.id)
-        if config:
-            return role.name, int(config["points"]), role.id, str(config["board"])
-    return None
-
-
-def get_awarded_members(message: discord.Message) -> list[discord.Member]:
-    unique: dict[int, discord.Member] = {}
-    for member in message.mentions:
-        if isinstance(member, discord.Member) and not member.bot:
-            unique[member.id] = member
-    if isinstance(message.author, discord.Member) and not message.author.bot:
-        unique[message.author.id] = message.author
-    return list(unique.values())
-
-
-async def send_score_ack(message: discord.Message, category_tag: str, points: int, role_id: int, recipients: list[discord.Member], board_key: str) -> None:
-    now_ts = time.time()
-    last_sent = LAST_ACK_BY_CHANNEL.get(message.channel.id, 0.0)
-    if now_ts - last_sent < ACK_COOLDOWN_SECONDS:
-        return
-    LAST_ACK_BY_CHANNEL[message.channel.id] = now_ts
-    mentions = ", ".join(member.mention for member in recipients)
-    content = f"Recorded **{points}** point(s) for **{category_tag}** in **{BOARD_LABELS.get(board_key, board_key)}** (<@&{role_id}>): {mentions}"
-    try:
-        await message.reply(content, mention_author=False)
-        return
-    except discord.HTTPException as exc:
-        print(f"Ack reply rate-limited/failed for message {message.id}: {exc}")
-    except Exception as exc:
-        print(f"Ack reply failed for message {message.id}: {exc}")
-
-    if ACK_USE_REACTION_FALLBACK:
-        try:
-            await message.add_reaction("✅")
-        except Exception as exc:
-            print(f"Ack reaction fallback failed for message {message.id}: {exc}")
-
-
-
-async def maybe_send_prank_message(message: discord.Message) -> None:
+async def maybe_send_score_prank(message: discord.Message) -> None:
     if not PRANK_ENABLED:
         return
     if not message.guild:
         return
     if message.author.bot:
         return
-    if not PRANK_USER_ID or not PRANK_CHANNEL_ID:
+    if not PRANK_CHANNEL_ID:
         return
     if message.channel.id != PRANK_CHANNEL_ID:
         return
-
-    target_triggered = message.author.id == PRANK_USER_ID or any(
-        user.id == PRANK_USER_ID for user in message.mentions
-    )
-    if not target_triggered:
+    if PRANK_EVERY_N_SCORE_POSTS <= 0:
         return
 
-    now = time.time()
-    last_sent = _prank_last_sent.get(message.guild.id, 0)
-    if now - last_sent < PRANK_COOLDOWN_SECONDS:
+    guild_id = message.guild.id
+    current_count = _prank_score_post_counter.get(guild_id, 0) + 1
+    _prank_score_post_counter[guild_id] = current_count
+
+    if current_count % PRANK_EVERY_N_SCORE_POSTS != 0:
         return
 
-    _prank_last_sent[message.guild.id] = now
-    quote = random.choice(PRANK_QUOTES).format(name=PRANK_USER_NICKNAME)
+    quote = random.choice(PRANK_QUOTES).format(name=message.author.mention)
 
     try:
         await message.channel.send(quote)
     except discord.HTTPException as exc:
-        print(f"Failed to send prank message: {exc}")
+        print(f"Failed to send score prank message: {exc}")
 
 
 async def process_message_for_points(message: discord.Message) -> bool:
@@ -722,6 +146,7 @@ async def process_message_for_points(message: discord.Message) -> bool:
         )
 
     mark_processed(message.id, message.guild.id, message.channel.id)
+    await maybe_send_score_prank(message)
     return True
 
 
@@ -830,7 +255,6 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    await maybe_send_prank_message(message)
     processed = await process_message_for_points(message)
     if processed:
         try:
