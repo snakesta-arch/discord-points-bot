@@ -32,6 +32,7 @@ LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID", "0"))
 BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "America/New_York")
 DB_PATH = os.getenv("DB_PATH", "/data/points_bot.db")
 LEADERBOARD_POST_HOURS = os.getenv("LEADERBOARD_POST_HOURS", "9,21")
+ENABLE_RANKED_LEADERBOARD = os.getenv("ENABLE_RANKED_LEADERBOARD", "false").lower() in {"1","true","yes","on"}
 MOD_ROLE_ID = int(os.getenv("MOD_ROLE_ID", "1344514802898309220"))
 BOT_ROLE_ID = int(os.getenv("BOT_ROLE_ID", "708012967308034138"))
 ACK_COOLDOWN_SECONDS = int(os.getenv("ACK_COOLDOWN_SECONDS", "10"))
