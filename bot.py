@@ -1,7 +1,7 @@
-# Updated Discord points bot with 3 separate leaderboards:
+# Updated Discord points bot with configurable leaderboards:
 # - Warzone
 # - Multiplayer
-# - MoD Ranked
+# - MoD Ranked can be enabled/disabled with ENABLE_RANKED_LEADERBOARD
 #
 # Notes:
 # - Black Ops Royale remains mapped to Warzone at 2 points for historical fairness.
@@ -111,6 +111,41 @@ LEGACY_CATEGORY_TO_BOARD = {
     "MP Game": "multiplayer",
     "MP Ranked": "mod_ranked",
 }
+
+
+def get_active_board_labels() -> dict[str, str]:
+    labels = {
+        "warzone": "Warzone Leaderboard",
+        "multiplayer": "Multiplayer Leaderboard",
+    }
+    if ENABLE_RANKED_LEADERBOARD:
+        labels["mod_ranked"] = "MoD Ranked Leaderboard"
+    return labels
+
+
+def get_active_point_tags() -> dict[int, dict]:
+    if ENABLE_RANKED_LEADERBOARD:
+        return POINT_TAGS
+    return {
+        role_id: config
+        for role_id, config in POINT_TAGS.items()
+        if config.get("board") != "mod_ranked"
+    }
+
+
+def get_active_board_choices() -> list[app_commands.Choice[str]]:
+    choices = [
+        app_commands.Choice(name="Warzone", value="warzone"),
+        app_commands.Choice(name="Multiplayer", value="multiplayer"),
+    ]
+    if ENABLE_RANKED_LEADERBOARD:
+        choices.append(app_commands.Choice(name="MoD Ranked", value="mod_ranked"))
+    return choices
+
+
+def is_valid_board(board_key: str) -> bool:
+    return board_key in get_active_board_labels()
+
 
 POST_HOURS = {
     int(part.strip())
@@ -641,7 +676,7 @@ async def send_score_ack(message: discord.Message, category_tag: str, points: in
         return
     LAST_ACK_BY_CHANNEL[message.channel.id] = now_ts
     mentions = ", ".join(member.mention for member in recipients)
-    content = f"Recorded **{points}** point(s) for **{category_tag}** in **{BOARD_LABELS.get(board_key, board_key)}** (<@&{role_id}>): {mentions}"
+    content = f"Recorded **{points}** point(s) for **{category_tag}** in **{get_active_board_labels().get(board_key, board_key)}** (<@&{role_id}>): {mentions}"
     try:
         await message.reply(content, mention_author=False)
         return
@@ -831,6 +866,7 @@ async def on_ready():
         leaderboard_task.start()
 
     print(f"Logged in as {bot.user} ({bot.user.id})")
+    print(f"Ranked leaderboard enabled: {ENABLE_RANKED_LEADERBOARD}")
 
 
 @bot.event
@@ -848,11 +884,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 
-BOARD_CHOICES = [
-    app_commands.Choice(name="Warzone", value="warzone"),
-    app_commands.Choice(name="Multiplayer", value="multiplayer"),
-    app_commands.Choice(name="MoD Ranked", value="mod_ranked"),
-]
+BOARD_CHOICES = get_active_board_choices()
 EXPORT_TYPE_CHOICES = [
     app_commands.Choice(name="summary", value="summary"),
     app_commands.Choice(name="breakdown", value="breakdown"),
@@ -1163,7 +1195,8 @@ async def leaderboard_task():
     for hour in POST_HOURS:
         schedule_map[(hour, 0)] = "warzone"
         schedule_map[(hour, 5)] = "multiplayer"
-        schedule_map[(hour, 10)] = "mod_ranked"
+        if ENABLE_RANKED_LEADERBOARD:
+            schedule_map[(hour, 10)] = "mod_ranked"
 
     board_key = schedule_map.get((now.hour, now.minute))
     if board_key is None:
